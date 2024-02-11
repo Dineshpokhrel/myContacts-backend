@@ -2,16 +2,16 @@ const asyncHandler = require("express-async-handler");
 const Contact = require("../models/contactModel");
 //@decs Get all Contacts
 //@route GET /api/contacts
-//@access public
+//@access private
 
 const getContacts =  asyncHandler(async (req, res) => {
-    const contacts = await Contact.find();
+    const contacts = await Contact.find({ user_id: req.user.id});
     res.status(200).json(contacts);
 });
 
 //@decs Create new Contacts
 //@route POST /api/contacts
-//@access public
+//@access private
 
 const createContact = asyncHandler(async (req, res) => {
     console.log("The request body is :",req.body);
@@ -25,13 +25,14 @@ const createContact = asyncHandler(async (req, res) => {
         name,
         email,
         phone,
+        user_id: req.user.id
     })
     res.status(201).json(contact);
 });
 
 //@decs GET Contacts
 //@route GET /api/contacts/:id
-//@access public
+//@access private
 
 const getContact = asyncHandler(async (req, res) => {
     const contact = await Contact.findById(req.params.id);
@@ -44,26 +45,48 @@ const getContact = asyncHandler(async (req, res) => {
 
 //@decs Update Contacts
 //@route PUT /api/contacts/:id
-//@access public
-
+//@access private
 const updateContact = asyncHandler(async (req, res) => {
     const contact = await Contact.findById(req.params.id);
-    if(!contact) {
+    if (!contact) {
+        res.status(404);
+        throw new Error("Contact not found");
+    }
+    
+    // Ensure that the user is authorized to update the contact
+    if (contact.user_id.toString() !== req.user.id) { // Convert to string for comparison
+        res.status(403);
+        throw new Error("User is not authorized to update other user contacts");
+    }
+
+    // Ensure that at least one field is provided for updating
+    if (!req.body.name && !req.body.email && !req.body.phone) {
+        res.status(400);
+        throw new Error("At least one field (name, email, or phone) is required for updating");
+    }
+
+    // Use findByIdAndUpdate to update only specified fields
+    const updatedContact = await Contact.findByIdAndUpdate(
+        req.params.id,
+        req.body,
+        { new: true, runValidators: true } // Set runValidators to true to ensure validation is performed
+    );
+
+    // Check if the contact was successfully updated
+    if (!updatedContact) {
         res.status(404);
         throw new Error("Contact not found");
     }
 
-    const updatedContact = await Contact.findByIdAndUpdate(
-        req.params.id,
-        req.body,
-        {new: true}
-    );
-    res.status(201).json(updatedContact);
+    res.status(200).json(updatedContact);
 });
+
+
+
 
 //@decs Delete Contacts
 //@route DELETE /api/contacts/:id
-//@access public
+//@access private
 
 const deleteContact = asyncHandler(async (req, res) => {
     const contact = await Contact.findById(req.params.id);
@@ -71,6 +94,11 @@ const deleteContact = asyncHandler(async (req, res) => {
         res.status(404);
         throw new Error("Contact not found");
     }
+    if(contact.user_id.toString()  !== req.user.id) {
+        res.status(403);
+        throw new Error("User is Not authorized to delete other user contacts");
+    }
+
     const deletedContact = await Contact.findByIdAndDelete(req.params.id);
     res.status(200).json(deletedContact);
 });
